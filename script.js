@@ -32,38 +32,150 @@
     return out;
   };
 
+  // اختر عناصر عشوائية من مصفوفة بدون تكرار
+  const pickRandom = (arr, n) => {
+    const copy = arr.slice();
+    const out = [];
+    while (out.length < n && copy.length > 0) {
+      const idx = Math.floor(Math.random() * copy.length);
+      out.push(copy.splice(idx, 1)[0]);
+    }
+    return out;
+  };
+
+  // درجات الصعوبة الـ ٥ (٢٠٠ سهل، ١٠٠٠ صعب)
+  const POINTS_TIERS = [200, 400, 600, 800, 1000];
+
+  // ابنِ فئات هذه اللعبة من بنك الأسئلة الكامل
+  // اختر N فئات عشوائياً، ومن كل فئة اختر ٥ أسئلة وزّعها على درجات الصعوبة
+  const buildGameCategories = () => {
+    const numCats = (CFG.categoriesPerGame || 6);
+    const selected = pickRandom(CATEGORIES, numCats);
+    return selected.map(cat => {
+      const picked = pickRandom(cat.pool || [], POINTS_TIERS.length);
+      // إذا الفئة فيها أقل من العدد المطلوب، نكمّل من البنك (نادر)
+      while (picked.length < POINTS_TIERS.length && cat.pool && cat.pool.length > 0) {
+        picked.push(cat.pool[Math.floor(Math.random() * cat.pool.length)]);
+      }
+      return {
+        name: cat.name,
+        emoji: cat.emoji,
+        questions: picked.map((q, i) => ({
+          points: POINTS_TIERS[i],
+          question: q.q,
+          correctAnswer: q.a
+        }))
+      };
+    });
+  };
+
   // أرقام عربية هندية
   const arDigits = ["٠","١","٢","٣","٤","٥","٦","٧","٨","٩"];
   const ar = (n) => String(n).replace(/\d/g, d => arDigits[d]);
 
   /* ============================================================
-   * طبقة النقل (نفس البنية للسهولة في استبدالها بـ n8n لاحقاً)
+   * طبقة النقل
+   *   - LocalTransport: تخزين محلي (للاختبار على جهاز واحد)
+   *   - N8nTransport:   خادم حقيقي عبر n8n (للأجهزة المتعددة)
+   *
+   * الواجهة الموحدة (كل الدوال async):
+   *   - create(code, state)  → ينشئ لعبة جديدة
+   *   - read(code)           → يقرأ الحالة (يرجع state أو null)
+   *   - write(code, state)   → يحدّث الحالة
+   *   - poll(code, callback) → يستدعي callback عند تغيّر الحالة
    * ============================================================ */
-  const Transport = {
+
+  const LocalTransport = {
     key(code) { return `mamahanaa::${code}`; },
 
-    read(code) {
+    async create(code, state) {
+      state.lastUpdate = Date.now();
+      localStorage.setItem(this.key(code), JSON.stringify(state));
+      return state;
+    },
+
+    async read(code) {
       try { return JSON.parse(localStorage.getItem(this.key(code))) || null; }
       catch { return null; }
     },
 
-    write(code, state) {
+    async write(code, state) {
       state.lastUpdate = Date.now();
       localStorage.setItem(this.key(code), JSON.stringify(state));
+      return state;
     },
 
     poll(code, callback, intervalMs = 300) {
-      let last = JSON.stringify(this.read(code));
-      const id = setInterval(() => {
-        const cur = JSON.stringify(this.read(code));
-        if (cur !== last) {
-          last = cur;
-          try { callback(JSON.parse(cur)); } catch (_) {}
+      let lastUpdate = 0;
+      const tick = async () => {
+        const cur = await this.read(code);
+        if (cur && cur.lastUpdate !== lastUpdate) {
+          lastUpdate = cur.lastUpdate;
+          try { callback(cur); } catch (_) {}
         }
-      }, intervalMs);
+      };
+      tick();
+      const id = setInterval(tick, intervalMs);
       return () => clearInterval(id);
     }
   };
+
+  const N8nTransport = {
+    base() { return CFG.backend.n8nBaseUrl.replace(/\/$/, ""); },
+
+    async create(code, state) {
+      state.lastUpdate = Date.now();
+      const r = await fetch(`${this.base()}/mama-hanaa-create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: { code, state } })
+      });
+      if (!r.ok) throw new Error("فشل إنشاء اللعبة");
+      return state;
+    },
+
+    async read(code) {
+      try {
+        const r = await fetch(`${this.base()}/mama-hanaa-read?code=${encodeURIComponent(code)}`);
+        if (!r.ok) return null;
+        const data = await r.json();
+        return data && data.state ? data.state : null;
+      } catch (e) {
+        console.error("read error", e);
+        return null;
+      }
+    },
+
+    async write(code, state) {
+      state.lastUpdate = Date.now();
+      const r = await fetch(`${this.base()}/mama-hanaa-write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: { code, state } })
+      });
+      if (!r.ok) throw new Error("فشل تحديث الحالة");
+      return state;
+    },
+
+    poll(code, callback, intervalMs = 1500) {
+      let lastUpdate = 0;
+      const tick = async () => {
+        const cur = await this.read(code);
+        if (cur && cur.lastUpdate !== lastUpdate) {
+          lastUpdate = cur.lastUpdate;
+          try { callback(cur); } catch (_) {}
+        }
+      };
+      tick();
+      const id = setInterval(tick, intervalMs);
+      return () => clearInterval(id);
+    }
+  };
+
+  // اختر طبقة النقل حسب الإعدادات
+  const Transport = (CFG.backend && CFG.backend.mode === "n8n")
+    ? N8nTransport
+    : LocalTransport;
 
   /* ============================================================
    * شكل حالة اللعبة:
@@ -91,6 +203,8 @@
         team2: { name: CFG.teamNames.team2, score: 0 }
       },
       currentTurn: "team1",
+      // الفئات المختارة لهذه اللعبة (من بنك الأسئلة الكامل)
+      gameCategories: buildGameCategories(),
       used: [],
       selectedCategory: -1,
       selectedDifficulty: 0,
@@ -108,7 +222,12 @@
   function initHost() {
     const code = randCode();
     let state = newGameState(code);
-    Transport.write(code, state);
+
+    // أنشئ اللعبة على الخادم
+    Transport.create(code, state).catch(err => {
+      console.error("create failed", err);
+      alert("فشل الاتصال بالخادم. تأكد من إعدادات n8n.");
+    });
 
     let timerInterval = null;
 
@@ -181,9 +300,9 @@
     }
 
     /* ---- بدء اللعبة ---- */
-    $("#startGameBtn")?.addEventListener("click", () => {
+    $("#startGameBtn")?.addEventListener("click", async () => {
       state.status = "board";
-      Transport.write(code, state);
+      await Transport.write(code, state);
     });
 
     /* ---- لوحة الفئات ---- */
@@ -202,7 +321,7 @@
 
       // اللوحة
       const grid = $("#boardGrid");
-      grid.innerHTML = CATEGORIES.map((cat, ci) => `
+      grid.innerHTML = state.gameCategories.map((cat, ci) => `
         <div class="cat-col">
           <div class="cat-col__head">
             <div class="cat-col__emoji">${cat.emoji}</div>
@@ -216,17 +335,17 @@
       `).join("");
 
       // تحقق إذا انتهت اللعبة
-      if (state.used.length >= CATEGORIES.length * 3) {
-        setTimeout(() => {
+      if (state.used.length >= state.gameCategories.length * POINTS_TIERS.length) {
+        setTimeout(async () => {
           state.status = "final";
-          Transport.write(code, state);
+          await Transport.write(code, state);
         }, 1500);
       }
     }
 
     /* ---- عرض السؤال ---- */
     function renderQuestion() {
-      const cat = CATEGORIES[state.selectedCategory];
+      const cat = state.gameCategories[state.selectedCategory];
       const q = cat.questions.find(qq => qq.points === state.selectedDifficulty);
       if (!q) return;
 
@@ -261,7 +380,7 @@
       const r = state.lastResult;
       if (!r) return;
       const teamName = state.teams[r.team].name;
-      const cat = CATEGORIES[state.selectedCategory];
+      const cat = state.gameCategories[state.selectedCategory];
       const q = cat.questions.find(qq => qq.points === state.selectedDifficulty);
 
       $("#resultIcon").textContent = r.correct ? "✓" : "✗";
@@ -304,14 +423,14 @@
     }
 
     /* ---- إعادة اللعبة ---- */
-    $("#restartBtn")?.addEventListener("click", () => {
+    $("#restartBtn")?.addEventListener("click", async () => {
       state.teams.team1.score = 0;
       state.teams.team2.score = 0;
       state.used = [];
       state.currentTurn = "team1";
       state.status = "board";
       state.lastResult = null;
-      Transport.write(code, state);
+      await Transport.write(code, state);
     });
   }
 
@@ -332,7 +451,7 @@
       e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
     });
 
-    $("#judgeConnectBtn")?.addEventListener("click", () => {
+    $("#judgeConnectBtn")?.addEventListener("click", async () => {
       const c = $("#judgeCodeInput").value.trim().toUpperCase();
       const hint = $("#judgeHint");
       hint.textContent = "";
@@ -342,7 +461,16 @@
         hint.classList.add("hint--err");
         return;
       }
-      const state = Transport.read(c);
+
+      const btn = $("#judgeConnectBtn");
+      btn.disabled = true;
+      btn.querySelector(".btn__label").textContent = "جارٍ الاتصال…";
+
+      const state = await Transport.read(c);
+
+      btn.disabled = false;
+      btn.querySelector(".btn__label").textContent = "اتصال";
+
       if (!state) {
         hint.textContent = "اللعبة غير موجودة.";
         hint.classList.add("hint--err");
@@ -351,10 +479,9 @@
 
       code = c;
       state.judgeConnected = true;
-      Transport.write(code, state);
+      await Transport.write(code, state);
       connected = true;
 
-      // إعدادات الفريقين
       $("#team1NameInput").value = state.teams.team1.name;
       $("#team2NameInput").value = state.teams.team2.name;
 
@@ -362,14 +489,14 @@
       startWatching();
     });
 
-    $("#saveTeamsBtn")?.addEventListener("click", () => {
-      const state = Transport.read(code);
+    $("#saveTeamsBtn")?.addEventListener("click", async () => {
+      const state = await Transport.read(code);
       if (!state) return;
       const n1 = $("#team1NameInput").value.trim() || CFG.teamNames.team1;
       const n2 = $("#team2NameInput").value.trim() || CFG.teamNames.team2;
       state.teams.team1.name = n1;
       state.teams.team2.name = n2;
-      Transport.write(code, state);
+      await Transport.write(code, state);
       showScreen("waiting", "data-jscreen");
     });
 
@@ -398,7 +525,7 @@
     }
 
     function renderJudgeQuestion(state) {
-      const cat = CATEGORIES[state.selectedCategory];
+      const cat = state.gameCategories[state.selectedCategory];
       const q = cat.questions.find(qq => qq.points === state.selectedDifficulty);
       if (!q) return;
 
@@ -418,8 +545,8 @@
     $("#judgeCorrectBtn")?.addEventListener("click", () => decide(true));
     $("#judgeWrongBtn")?.addEventListener("click", () => decide(false));
 
-    function decide(isCorrect) {
-      const state = Transport.read(code);
+    async function decide(isCorrect) {
+      const state = await Transport.read(code);
       if (!state || (state.status !== "question" && state.status !== "judging")) return;
 
       const team = state.currentTurn;
@@ -430,13 +557,13 @@
       state.lastResult = { team, points, correct: isCorrect };
       state.used.push(`${state.selectedCategory}-${state.selectedDifficulty}`);
       state.status = "result";
-      Transport.write(code, state);
+      await Transport.write(code, state);
 
       // بعد ٤ ثواني، يرجع للوحة ويبدّل الدور
-      setTimeout(() => {
-        const cur = Transport.read(code);
+      setTimeout(async () => {
+        const cur = await Transport.read(code);
         if (!cur) return;
-        if (cur.used.length >= CATEGORIES.length * 3) {
+        if (cur.used.length >= cur.gameCategories.length * POINTS_TIERS.length) {
           cur.status = "final";
         } else {
           cur.currentTurn = cur.currentTurn === "team1" ? "team2" : "team1";
@@ -444,7 +571,7 @@
         }
         cur.selectedCategory = -1;
         cur.selectedDifficulty = 0;
-        Transport.write(code, cur);
+        await Transport.write(code, cur);
       }, 4000);
     }
   }
@@ -464,7 +591,7 @@
       e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
     });
 
-    $("#playerConnectBtn")?.addEventListener("click", () => {
+    $("#playerConnectBtn")?.addEventListener("click", async () => {
       const c = $("#playerCodeInput").value.trim().toUpperCase();
       const hint = $("#playerHint");
       hint.textContent = "";
@@ -474,7 +601,16 @@
         hint.classList.add("hint--err");
         return;
       }
-      const state = Transport.read(c);
+
+      const btn = $("#playerConnectBtn");
+      btn.disabled = true;
+      btn.querySelector(".btn__label").textContent = "جارٍ الاتصال…";
+
+      const state = await Transport.read(c);
+
+      btn.disabled = false;
+      btn.querySelector(".btn__label").textContent = "اتصال";
+
       if (!state) {
         hint.textContent = "اللعبة غير موجودة.";
         hint.classList.add("hint--err");
@@ -483,7 +619,7 @@
 
       code = c;
       state.playerConnected = true;
-      Transport.write(code, state);
+      await Transport.write(code, state);
       startWatching();
     });
 
@@ -515,7 +651,7 @@
       $("#playerStepLabel").textContent = "اختر الفئة";
 
       const grid = $("#playerCategoryGrid");
-      grid.innerHTML = CATEGORIES.map((cat, ci) => {
+      grid.innerHTML = state.gameCategories.map((cat, ci) => {
         const allUsed = cat.questions.every(q => state.used.includes(`${ci}-${q.points}`));
         return `<button class="picker-tile ${allUsed ? 'picker-tile--used' : ''}" data-cat="${ci}" ${allUsed ? "disabled" : ""}>
           <span class="picker-tile__emoji">${cat.emoji}</span>
@@ -524,12 +660,13 @@
       }).join("");
 
       $$(".picker-tile").forEach(t => {
-        t.addEventListener("click", () => {
+        t.addEventListener("click", async () => {
           const ci = parseInt(t.dataset.cat);
-          const cur = Transport.read(code);
+          const cur = await Transport.read(code);
+          if (!cur) return;
           cur.selectedCategory = ci;
           cur.status = "selecting-difficulty";
-          Transport.write(code, cur);
+          await Transport.write(code, cur);
         });
       });
 
@@ -543,13 +680,12 @@
     }
 
     function renderDifficultySelect(state) {
-      const cat = CATEGORIES[state.selectedCategory];
+      const cat = state.gameCategories[state.selectedCategory];
       $("#playerStepLabel").textContent = `اختر درجة الصعوبة`;
       $("#playerCatHeader").innerHTML = `<span class="cat-emoji-big">${cat.emoji}</span> ${escapeHtml(cat.name)}`;
 
-      const points = [200, 400, 600];
       const grid = $("#playerDifficultyGrid");
-      grid.innerHTML = points.map(p => {
+      grid.innerHTML = POINTS_TIERS.map(p => {
         const used = state.used.includes(`${state.selectedCategory}-${p}`);
         return `<button class="diff-tile diff-tile--p${p} ${used ? 'diff-tile--used' : ''}" data-pts="${p}" ${used ? "disabled" : ""}>
           <span class="diff-tile__num">${used ? "✓" : ar(p)}</span>
@@ -558,21 +694,23 @@
       }).join("");
 
       $$(".diff-tile").forEach(t => {
-        t.addEventListener("click", () => {
+        t.addEventListener("click", async () => {
           const pts = parseInt(t.dataset.pts);
-          const cur = Transport.read(code);
+          const cur = await Transport.read(code);
+          if (!cur) return;
           cur.selectedDifficulty = pts;
           cur.status = "question";
           cur.questionStartedAt = Date.now();
-          Transport.write(code, cur);
+          await Transport.write(code, cur);
         });
       });
 
-      $("#playerBackToCat")?.addEventListener("click", () => {
-        const cur = Transport.read(code);
+      $("#playerBackToCat")?.addEventListener("click", async () => {
+        const cur = await Transport.read(code);
+        if (!cur) return;
         cur.selectedCategory = -1;
         cur.status = "board";
-        Transport.write(code, cur);
+        await Transport.write(code, cur);
       });
 
       showScreen("difficulty", "data-pscreen");
