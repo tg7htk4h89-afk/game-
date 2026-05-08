@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>اللاعب · سين جيم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Reem+Kufi:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="page-player">
+
+<div class="bg-grid bg-grid--player" aria-hidden="true"></div>
+
+<!-- =========== الانضمام ============ -->
+<section class="pscreen pscreen--join" data-pscreen="join">
+  <a href="index.html" class="player-back">→ الرئيسية</a>
+  <div class="pjoin">
+    <span class="pbrand">◆ سين جيم</span>
+    <h1 class="pjoin__title">انضم للعبة</h1>
+
+    <div class="pinput">
+      <label for="codeInput">رمز اللعبة</label>
+      <input id="codeInput" type="text" maxlength="6" placeholder="ABC123" autocomplete="off" dir="ltr" />
+    </div>
+
+    <div class="pinput">
+      <label for="nameInput">اسمك</label>
+      <input id="nameInput" type="text" maxlength="16" placeholder="مثلاً: طاهر" autocomplete="off" />
+    </div>
+
+    <button class="btn btn--primary btn--full" id="joinBtn">
+      <span class="btn__label">انضمام</span>
+      <span class="btn__arrow">←</span>
+    </button>
+
+    <p class="pjoin__hint" id="joinHint"></p>
+  </div>
+</section>
+
+<!-- =========== الانتظار ============ -->
+<section class="pscreen pscreen--wait hidden" data-pscreen="wait">
+  <div class="pwait">
+    <div class="pwait__pulse"></div>
+    <p class="eyebrow">انضممت</p>
+    <h1 class="pwait__name" id="waitName">—</h1>
+    <p class="pwait__msg">في انتظار بدء المُقدِّم للعبة…</p>
+    <div class="pwait__dots"><span></span><span></span><span></span></div>
+  </div>
+</section>
+
+<!-- =========== الإجابة ============ -->
+<section class="pscreen pscreen--answer hidden" data-pscreen="answer">
+  <header class="pheader">
+    <span class="pheader__name" id="pHeaderName">—</span>
+    <span class="pheader__score"><span id="pHeaderScore">٠</span> نقطة</span>
+  </header>
+
+  <div class="pquestion">
+    <div class="ptimer">
+      <div class="ptimer__bar" id="pTimerBar"></div>
+      <span class="ptimer__num" id="pTimerNum">٢٠</span>
+    </div>
+    <p class="pquestion__hint" id="pQuestionHint">اختر إجابتك</p>
+    <div class="poptions" id="pOptions">
+      <!-- ٤ خيارات -->
+    </div>
+  </div>
+</section>
+
+<!-- =========== تم الإرسال ============ -->
+<section class="pscreen pscreen--submitted hidden" data-pscreen="submitted">
+  <div class="psubmitted">
+    <div class="psubmitted__check">✓</div>
+    <p class="eyebrow">تم التثبيت</p>
+    <h1>تم إرسال الإجابة</h1>
+    <p class="pwait__msg">انتظر بقية اللاعبين…</p>
+  </div>
+</section>
+
+<!-- =========== النتيجة ============ -->
+<section class="pscreen pscreen--result hidden" data-pscreen="result">
+  <div class="presult" id="presultBox">
+    <div class="presult__icon" id="presultIcon">✓</div>
+    <h1 class="presult__verdict" id="presultVerdict">صحيح!</h1>
+    <p class="presult__points">+<span id="presultPoints">٠</span> نقطة</p>
+    <div class="presult__rank">
+      <span>الترتيب</span>
+      <strong id="presultRank">—</strong>
+    </div>
+    <p class="presult__total">الإجمالي: <strong id="presultTotal">٠</strong></p>
+  </div>
+</section>
+
+<!-- =========== النهاية ============ -->
+<section class="pscreen pscreen--final hidden" data-pscreen="final">
+  <div class="pfinal">
+    <p class="eyebrow">انتهت اللعبة</p>
+    <h1 id="pfinalRank">#١</h1>
+    <p class="pfinal__name" id="pfinalName">—</p>
+    <p class="pfinal__score"><span id="pfinalScore">٠</span> نقطة</p>
+    <p class="pfinal__correct"><span id="pfinalCorrect">٠</span> إجابات صحيحة</p>
+    <a href="index.html" class="btn btn--ghost btn--full">العودة للرئيسية</a>
+  </div>
+</section>
+
+<script src="questions.js"></script>
+<script src="script.js"></script>
+<script>
+  window.QuizArena.initPlayer();
+</script>
+</body>
+</html>

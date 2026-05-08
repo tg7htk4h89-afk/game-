@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>المُقدِّم · سين جيم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Reem+Kufi:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="page-host">
+
+<div class="bg-grid" aria-hidden="true"></div>
+
+<!-- =========== الانتظار ============ -->
+<section class="screen screen--lobby" data-screen="lobby">
+  <header class="host-top">
+    <a href="index.html" class="host-top__back">→ خروج</a>
+    <span class="host-top__title">سين <em>جيم</em> · المُقدِّم</span>
+    <span class="host-top__round">قاعة الانتظار</span>
+  </header>
+
+  <div class="lobby-grid">
+    <div class="lobby-grid__left">
+      <p class="eyebrow eyebrow--light">شارك الرمز</p>
+      <h1 class="lobby-headline">اللاعبون ينضمون بهذا الرمز</h1>
+
+      <div class="code-display">
+        <span class="code-display__label">رمز اللعبة</span>
+        <div class="code-display__digits" id="gameCodeDisplay">— — — — — —</div>
+        <button class="code-display__copy" id="copyCodeBtn">نسخ الرمز</button>
+      </div>
+
+      <div class="lobby-actions">
+        <button class="btn btn--primary btn--lg" id="startGameBtn" disabled>
+          <span class="btn__label">ابدأ اللعبة</span>
+          <span class="btn__arrow">←</span>
+        </button>
+        <span class="lobby-hint" id="lobbyHint">في انتظار انضمام اللاعبين…</span>
+      </div>
+    </div>
+
+    <div class="lobby-grid__right">
+      <div class="players-card">
+        <div class="players-card__head">
+          <h2>اللاعبون <span id="playerCount">٠</span></h2>
+          <span class="dot dot--live"></span>
+        </div>
+        <ul class="players-list" id="playersList">
+          <li class="players-empty">لا يوجد لاعبون بعد — شارك الرمز أعلاه.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- =========== السؤال ============ -->
+<section class="screen screen--question hidden" data-screen="question">
+  <header class="host-top">
+    <span class="host-top__round" id="qRoundLabel">السؤال ١ / ١٠</span>
+    <span class="host-top__title">سين <em>جيم</em></span>
+    <span class="host-top__cat" id="qCategoryBadge">الفئة</span>
+  </header>
+
+  <div class="question-stage">
+    <div class="question-stage__header">
+      <div class="qmeta">
+        <span class="qmeta__diff" id="qDifficulty">سهل</span>
+        <span class="qmeta__sep">·</span>
+        <span class="qmeta__cat" id="qCategory">عام</span>
+      </div>
+
+      <div class="timer">
+        <svg class="timer__ring" viewBox="0 0 120 120">
+          <circle class="timer__ring-bg" cx="60" cy="60" r="54"></circle>
+          <circle class="timer__ring-fg" id="timerRing" cx="60" cy="60" r="54"></circle>
+        </svg>
+        <span class="timer__num" id="timerNum">٢٠</span>
+      </div>
+
+      <div class="answer-counter">
+        <span class="answer-counter__num" id="answerCount">٠</span>
+        <span class="answer-counter__lbl">/ <span id="totalPlayers">٠</span> أجاب</span>
+      </div>
+    </div>
+
+    <h1 class="question-text" id="questionText">جارٍ تحميل السؤال…</h1>
+    <img class="question-image" id="questionImage" alt="" />
+
+    <div class="options-grid" id="optionsGrid">
+      <!-- الخيارات -->
+    </div>
+
+    <div class="host-controls">
+      <button class="btn btn--ghost" id="showAnswerBtn">كشف الإجابة</button>
+      <button class="btn btn--primary" id="nextQuestionBtn" disabled>
+        <span class="btn__label">التالي ←</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+
+<!-- =========== كشف الإجابة ============ -->
+<section class="screen screen--reveal hidden" data-screen="reveal">
+  <header class="host-top">
+    <span class="host-top__round">الإجابة الصحيحة</span>
+    <span class="host-top__title">سين <em>جيم</em></span>
+    <span class="host-top__cat">الكشف</span>
+  </header>
+
+  <div class="reveal-stage">
+    <p class="eyebrow eyebrow--light">الإجابة الصحيحة هي</p>
+    <h1 class="reveal-answer" id="revealAnswerText">—</h1>
+    <p class="reveal-explanation" id="revealExplanation"></p>
+
+    <div class="reveal-stats">
+      <div class="reveal-stat">
+        <span class="reveal-stat__num" id="correctCount">٠</span>
+        <span class="reveal-stat__lbl">أجابوا صحيحاً</span>
+      </div>
+      <div class="reveal-stat">
+        <span class="reveal-stat__num" id="wrongCount">٠</span>
+        <span class="reveal-stat__lbl">أخطأوا</span>
+      </div>
+      <div class="reveal-stat">
+        <span class="reveal-stat__num" id="avgTime">—</span>
+        <span class="reveal-stat__lbl">متوسط الزمن</span>
+      </div>
+    </div>
+
+    <button class="btn btn--primary btn--lg" id="showLeaderboardBtn">
+      <span class="btn__label">عرض المتصدرين</span>
+      <span class="btn__arrow">←</span>
+    </button>
+  </div>
+</section>
+
+
+<!-- =========== المتصدرون ============ -->
+<section class="screen screen--leaderboard hidden" data-screen="leaderboard">
+  <header class="host-top">
+    <span class="host-top__round" id="lbRoundLabel">بعد السؤال ١</span>
+    <span class="host-top__title">سين <em>جيم</em></span>
+    <span class="host-top__cat">المتصدرون</span>
+  </header>
+
+  <div class="leaderboard-stage">
+    <div class="podium" id="podium">
+      <!-- أعلى ٣ -->
+    </div>
+    <ol class="rest-list" id="restList">
+      <!-- البقية -->
+    </ol>
+
+    <div class="host-controls">
+      <button class="btn btn--primary btn--lg" id="continueBtn">
+        <span class="btn__label">السؤال التالي ←</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+
+<!-- =========== النهاية ============ -->
+<section class="screen screen--final hidden" data-screen="final">
+  <header class="host-top">
+    <span class="host-top__round">انتهت اللعبة</span>
+    <span class="host-top__title">سين <em>جيم</em></span>
+    <span class="host-top__cat">البطل</span>
+  </header>
+
+  <div class="final-stage">
+    <p class="eyebrow eyebrow--light">والبطل هو</p>
+    <h1 class="champion-name" id="championName">—</h1>
+    <p class="champion-score"><span id="championScore">٠</span> نقطة</p>
+
+    <div class="podium podium--final" id="finalPodium"></div>
+    <ol class="rest-list" id="finalRestList"></ol>
+
+    <div class="host-controls">
+      <button class="btn btn--ghost" id="restartBtn">إعادة اللعبة</button>
+      <a class="btn btn--ghost" href="index.html">العودة للرئيسية</a>
+    </div>
+  </div>
+</section>
+
+<script src="questions.js"></script>
+<script src="script.js"></script>
+<script>
+  window.QuizArena.initHost();
+</script>
+</body>
+</html>
