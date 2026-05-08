@@ -31,25 +31,34 @@
       </div>
 
       <div class="link-row">
+        <button class="btn btn--ghost btn--sm" id="copyTeam1Link">📋 رابط الفريق ١</button>
+        <button class="btn btn--ghost btn--sm" id="copyTeam2Link">📋 رابط الفريق ٢</button>
         <button class="btn btn--ghost btn--sm" id="copyJudgeLink">📋 رابط الحكم</button>
-        <button class="btn btn--ghost btn--sm" id="copyPlayerLink">📋 رابط اللاعب</button>
       </div>
+      <p class="lobby-hint" id="lobbyHint">في انتظار اتصال الجميع…</p>
     </div>
 
     <div class="lobby-right">
       <div class="status-card">
+        <div class="status-pill" id="team1Status">
+          <span class="status-pill__icon">🔴</span>
+          <div>
+            <strong>الفريق الأول</strong>
+            <span id="team1StatusText">في انتظار قائد الفريق…</span>
+          </div>
+        </div>
+        <div class="status-pill" id="team2Status">
+          <span class="status-pill__icon">🔵</span>
+          <div>
+            <strong>الفريق الثاني</strong>
+            <span id="team2StatusText">في انتظار قائد الفريق…</span>
+          </div>
+        </div>
         <div class="status-pill" id="judgeStatus">
           <span class="status-pill__icon">⚖️</span>
           <div>
             <strong>الحكم</strong>
-            <span id="judgeStatusText">في انتظار الاتصال…</span>
-          </div>
-        </div>
-        <div class="status-pill" id="playerStatus">
-          <span class="status-pill__icon">🎮</span>
-          <div>
-            <strong>اللاعب</strong>
-            <span id="playerStatusText">في انتظار الاتصال…</span>
+            <span id="judgeStatusText">في انتظار الحكم…</span>
           </div>
         </div>
 
@@ -59,6 +68,32 @@
         </button>
       </div>
     </div>
+  </div>
+</section>
+
+
+<!-- =========== شاشة التصويت ============ -->
+<section class="screen screen--voting hidden" data-screen="voting">
+  <header class="board-top">
+    <div class="board-title" style="grid-column:1/-1;">
+      <span class="board-title__main">اختيار <em>الفئات</em></span>
+      <span class="board-title__turn" id="votingStatus">كل فريق يختار ٣ فئات من جواله</span>
+    </div>
+  </header>
+
+  <div class="voting-stage">
+    <div class="voting-teams">
+      <div class="voting-team voting-team--1">
+        <span class="voting-team__name" id="votingTeam1Name">الفريق ١</span>
+        <span class="voting-team__status" id="votingTeam1Status">يختار…</span>
+      </div>
+      <div class="voting-vs">VS</div>
+      <div class="voting-team voting-team--2">
+        <span class="voting-team__name" id="votingTeam2Name">الفريق ٢</span>
+        <span class="voting-team__status" id="votingTeam2Status">يختار…</span>
+      </div>
+    </div>
+    <p class="voting-hint">في انتظار إكمال التصويت من الفريقين…</p>
   </div>
 </section>
 
