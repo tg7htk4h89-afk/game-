@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>الحكم · مسابقات ماما هناء</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Reem+Kufi:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="page-judge">
+
+<div class="bg-grid bg-grid--player" aria-hidden="true"></div>
+
+<!-- =========== الاتصال ============ -->
+<section class="pscreen pscreen--connect" data-jscreen="connect">
+  <a href="index.html" class="player-back">→ الرئيسية</a>
+  <div class="pjoin">
+    <span class="pbrand">⚖️ شاشة الحكم</span>
+    <h1 class="pjoin__title">دخول الحكم</h1>
+
+    <div class="pinput">
+      <label for="judgeCodeInput">رمز اللعبة</label>
+      <input id="judgeCodeInput" type="text" maxlength="6" placeholder="ABC123" autocomplete="off" dir="ltr" />
+    </div>
+
+    <button class="btn btn--primary btn--full" id="judgeConnectBtn">
+      <span class="btn__label">اتصال</span>
+      <span class="btn__arrow">←</span>
+    </button>
+
+    <p class="pjoin__hint" id="judgeHint"></p>
+  </div>
+</section>
+
+<!-- =========== إعداد الفريقين ============ -->
+<section class="pscreen pscreen--setup hidden" data-jscreen="setup">
+  <div class="pjoin">
+    <span class="pbrand">⚖️ الحكم</span>
+    <h1 class="pjoin__title">أسماء الفريقين</h1>
+
+    <div class="pinput">
+      <label for="team1NameInput">الفريق الأول</label>
+      <input id="team1NameInput" type="text" maxlength="20" placeholder="مثلاً: فريق العم سعد" />
+    </div>
+
+    <div class="pinput">
+      <label for="team2NameInput">الفريق الثاني</label>
+      <input id="team2NameInput" type="text" maxlength="20" placeholder="مثلاً: فريق خالة فاطمة" />
+    </div>
+
+    <button class="btn btn--primary btn--full" id="saveTeamsBtn">
+      <span class="btn__label">حفظ والدخول</span>
+      <span class="btn__arrow">←</span>
+    </button>
+  </div>
+</section>
+
+<!-- =========== الانتظار ============ -->
+<section class="pscreen pscreen--waiting hidden" data-jscreen="waiting">
+  <div class="pwait">
+    <div class="pwait__pulse"></div>
+    <p class="eyebrow">الحكم متصل</p>
+    <h1 class="pwait__name">في الانتظار</h1>
+    <p class="pwait__msg" id="waitingMsg">في انتظار بدء اللعبة…</p>
+    <div class="pwait__dots"><span></span><span></span><span></span></div>
+  </div>
+</section>
+
+<!-- =========== التحكيم ============ -->
+<section class="pscreen pscreen--judging hidden" data-jscreen="judging">
+  <header class="judge-header">
+    <span class="judge-header__cat" id="judgeCategoryName">💝 الفئة</span>
+    <span class="judge-header__pts"><span id="judgePoints">٢٠٠</span> نقطة</span>
+  </header>
+
+  <div class="judge-turn">دور: <strong id="judgeTeamTurn">الفريق</strong></div>
+
+  <div class="judge-question-card">
+    <span class="judge-label">السؤال</span>
+    <p class="judge-question-text" id="judgeQuestionText">—</p>
+  </div>
+
+  <div class="judge-answer-card">
+    <span class="judge-label judge-label--green">الإجابة الصحيحة</span>
+    <p class="judge-answer-text" id="judgeAnswerText">—</p>
+    <div class="judge-hint-row hidden" id="judgeHintRow">
+      <span class="judge-label">تلميح:</span>
+      <span id="judgeHintText"></span>
+    </div>
+  </div>
+
+  <div class="judge-decision">
+    <button class="judge-btn judge-btn--correct" id="judgeCorrectBtn">
+      <span class="judge-btn__icon">✓</span>
+      <span class="judge-btn__lbl">إجابة صحيحة</span>
+    </button>
+    <button class="judge-btn judge-btn--wrong" id="judgeWrongBtn">
+      <span class="judge-btn__icon">✗</span>
+      <span class="judge-btn__lbl">إجابة خاطئة</span>
+    </button>
+  </div>
+</section>
+
+<!-- =========== انتهت ============ -->
+<section class="pscreen pscreen--ended hidden" data-jscreen="ended">
+  <div class="pwait">
+    <p class="eyebrow">انتهت اللعبة</p>
+    <h1 class="pwait__name">شكراً للحكم</h1>
+    <p class="pwait__msg">انتهى دور التحكيم.</p>
+    <a href="index.html" class="btn btn--ghost btn--full">العودة للرئيسية</a>
+  </div>
+</section>
+
+<script src="questions.js"></script>
+<script src="script.js"></script>
+<script>
+  window.MamaHanaa.initJudge();
+</script>
+</body>
+</html>

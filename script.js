@@ -1,22 +1,23 @@
 /* ============================================================
- * سين جيم — محرك اللعبة
- * ------------------------------------------------------------
- * البنية:
- *   - طبقة النقل (LocalTransport) للمزامنة بين المُقدِّم واللاعبين.
- *     الافتراضي: localStorage في نفس المتصفح للاختبار.
- *     استبدلها بـ NetworkTransport يربط n8n / Firebase / Supabase
- *     لتفعيل اللعب على أجهزة متعددة.
- *   - متحكم المُقدِّم يقود حالة اللعبة.
- *   - متحكم اللاعب يستجيب لتغيرات الحالة.
+ * مسابقات ماما حجية هناء — محرك اللعبة
+ *
+ * الأدوار:
+ *   - الشاشة الرئيسية (host.html): تعرض اللوحة، السؤال، العدّاد، النتائج
+ *   - شاشة الحكم (judge.html): يقرر صح/غلط، يشوف الإجابة الصحيحة
+ *   - شاشة اللاعب (player.html): يختار الفئة + درجة الصعوبة
+ *
+ * الحالة (state) تتشارك بين الشاشات الثلاث عبر localStorage
+ * (لاختبار محلي). للعبة على أجهزة متعددة، استبدل LocalTransport
+ * بطبقة شبكة (n8n / Firebase / Supabase).
  * ============================================================ */
 
 (function () {
   "use strict";
 
   const CFG = window.QUIZ_CONFIG;
-  const QUESTIONS = window.QUIZ_QUESTIONS;
+  const CATEGORIES = window.QUIZ_CATEGORIES;
 
-  /* ---------- أدوات مساعدة ---------- */
+  /* ---------- أدوات ---------- */
   const $  = (sel, ctx = document) => ctx.querySelector(sel);
   const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
   const showScreen = (selector, attr = "data-screen") => {
@@ -31,15 +32,15 @@
     return out;
   };
 
-  // تحويل الأرقام إلى أرقام عربية (هندية)
+  // أرقام عربية هندية
   const arDigits = ["٠","١","٢","٣","٤","٥","٦","٧","٨","٩"];
   const ar = (n) => String(n).replace(/\d/g, d => arDigits[d]);
 
   /* ============================================================
-   * طبقة النقل
+   * طبقة النقل (نفس البنية للسهولة في استبدالها بـ n8n لاحقاً)
    * ============================================================ */
-  const LocalTransport = {
-    key(code) { return `quizarena::${code}`; },
+  const Transport = {
+    key(code) { return `mamahanaa::${code}`; },
 
     read(code) {
       try { return JSON.parse(localStorage.getItem(this.key(code))) || null; }
@@ -47,20 +48,11 @@
     },
 
     write(code, state) {
+      state.lastUpdate = Date.now();
       localStorage.setItem(this.key(code), JSON.stringify(state));
     },
 
-    subscribe(code, callback) {
-      const handler = (e) => {
-        if (e.key === this.key(code)) {
-          try { callback(JSON.parse(e.newValue)); } catch (_) {}
-        }
-      };
-      window.addEventListener("storage", handler);
-      return () => window.removeEventListener("storage", handler);
-    },
-
-    poll(code, callback, intervalMs = 400) {
+    poll(code, callback, intervalMs = 300) {
       let last = JSON.stringify(this.read(code));
       const id = setInterval(() => {
         const cur = JSON.stringify(this.read(code));
@@ -75,565 +67,533 @@
 
   /* ============================================================
    * شكل حالة اللعبة:
-   * { code, status, currentQ, players: {id: {name, score, answers, correct, totalTime}},
-   *   currentAnswers: {id: {option, time}}, revealed, questionStartedAt }
-   * status: "lobby" | "question" | "reveal" | "leaderboard" | "final"
+   * {
+   *   code,
+   *   status: "lobby" | "board" | "selecting-difficulty" | "question" | "judging" | "result" | "final",
+   *   teams: { team1: {name, score}, team2: {name, score} },
+   *   currentTurn: "team1" | "team2",
+   *   used: ["0-200", "0-400", ...],   // الأسئلة المستخدمة
+   *   selectedCategory: 0..3,
+   *   selectedDifficulty: 200|400|600,
+   *   questionStartedAt: ms,
+   *   lastResult: { team, points, correct },
+   *   judgeConnected: bool,
+   *   playerConnected: bool
+   * }
    * ============================================================ */
 
   function newGameState(code) {
     return {
       code,
       status: "lobby",
-      currentQ: -1,
-      players: {},
-      currentAnswers: {},
-      revealed: false,
+      teams: {
+        team1: { name: CFG.teamNames.team1, score: 0 },
+        team2: { name: CFG.teamNames.team2, score: 0 }
+      },
+      currentTurn: "team1",
+      used: [],
+      selectedCategory: -1,
+      selectedDifficulty: 0,
       questionStartedAt: 0,
+      lastResult: null,
+      judgeConnected: false,
+      playerConnected: false,
       lastUpdate: Date.now()
     };
   }
 
   /* ============================================================
-   * متحكم المُقدِّم
+   * الشاشة الرئيسية (host.html)
    * ============================================================ */
   function initHost() {
     const code = randCode();
     let state = newGameState(code);
-    LocalTransport.write(code, state);
+    Transport.write(code, state);
 
     let timerInterval = null;
 
-    const save = () => {
-      state.lastUpdate = Date.now();
-      LocalTransport.write(code, state);
-    };
-
     /* ---- قاعة الانتظار ---- */
     $("#gameCodeDisplay").textContent = code.split("").join(" ");
-    $("#copyCodeBtn").addEventListener("click", () => {
-      navigator.clipboard?.writeText(code);
-      const btn = $("#copyCodeBtn");
+    $("#copyJudgeLink")?.addEventListener("click", () => {
+      const link = `${location.origin}${location.pathname.replace("host.html","")}judge.html?code=${code}`;
+      navigator.clipboard?.writeText(link);
+      const btn = $("#copyJudgeLink");
+      const original = btn.textContent;
       btn.textContent = "تم النسخ ✓";
-      setTimeout(() => (btn.textContent = "نسخ الرمز"), 1500);
+      setTimeout(() => (btn.textContent = original), 1500);
+    });
+    $("#copyPlayerLink")?.addEventListener("click", () => {
+      const link = `${location.origin}${location.pathname.replace("host.html","")}player.html?code=${code}`;
+      navigator.clipboard?.writeText(link);
+      const btn = $("#copyPlayerLink");
+      const original = btn.textContent;
+      btn.textContent = "تم النسخ ✓";
+      setTimeout(() => (btn.textContent = original), 1500);
     });
 
-    LocalTransport.poll(code, (newState) => {
+    let lastSeenStatus = "";
+    let lastSeenQuestionStart = 0;
+
+    // متابعة تغيرات الحالة
+    Transport.poll(code, (newState) => {
       if (!newState) return;
-      const incomingPlayers = newState.players || {};
-      const incomingAnswers = newState.currentAnswers || {};
-      let changed = false;
+      state = newState;
+      handleStateChange();
+    });
 
-      Object.keys(incomingPlayers).forEach(pid => {
-        if (!state.players[pid]) {
-          state.players[pid] = incomingPlayers[pid];
-          changed = true;
-        }
-      });
+    function handleStateChange() {
+      // تحديث مؤشرات الاتصال في قاعة الانتظار
+      const judgeStatus = $("#judgeStatus");
+      const playerStatus = $("#playerStatus");
+      if (judgeStatus) judgeStatus.classList.toggle("status-pill--ok", state.judgeConnected);
+      if (playerStatus) playerStatus.classList.toggle("status-pill--ok", state.playerConnected);
+      if ($("#judgeStatusText")) $("#judgeStatusText").textContent = state.judgeConnected ? "متصل ✓" : "في انتظار الاتصال…";
+      if ($("#playerStatusText")) $("#playerStatusText").textContent = state.playerConnected ? "متصل ✓" : "في انتظار الاتصال…";
 
-      Object.keys(incomingAnswers).forEach(pid => {
-        if (!state.currentAnswers[pid] && incomingAnswers[pid]) {
-          state.currentAnswers[pid] = incomingAnswers[pid];
-          changed = true;
-        }
-      });
+      const startBtn = $("#startGameBtn");
+      if (startBtn) startBtn.disabled = !(state.judgeConnected && state.playerConnected);
 
-      if (changed) {
-        save();
-        renderPlayers();
-        renderAnswerCount();
-        if (
-          state.status === "question" &&
-          !state.revealed &&
-          Object.keys(state.currentAnswers).length === Object.keys(state.players).length &&
-          Object.keys(state.players).length > 0
-        ) {
-          revealAnswer();
+      // تحديث الشاشة حسب الحالة
+      if (state.status === "lobby") {
+        showScreen("lobby");
+      } else if (state.status === "board") {
+        renderBoard();
+        showScreen("board");
+      } else if (state.status === "question") {
+        renderQuestion();
+        showScreen("question");
+        // ابدأ العداد فقط لما يصير سؤال جديد
+        if (state.questionStartedAt !== lastSeenQuestionStart) {
+          lastSeenQuestionStart = state.questionStartedAt;
+          startTimer();
         }
+      } else if (state.status === "judging") {
+        clearInterval(timerInterval);
+        $("#timerNum").textContent = "—";
+      } else if (state.status === "result") {
+        clearInterval(timerInterval);
+        showResult();
+        showScreen("result");
+      } else if (state.status === "final") {
+        showFinal();
+        showScreen("final");
       }
-    }, 400);
-
-    function renderPlayers() {
-      const ids = Object.keys(state.players);
-      $("#playerCount").textContent = ar(ids.length);
-      const list = $("#playersList");
-      if (ids.length === 0) {
-        list.innerHTML = '<li class="players-empty">لا يوجد لاعبون بعد — شارك الرمز أعلاه.</li>';
-      } else {
-        list.innerHTML = ids
-          .map((id, i) => {
-            const p = state.players[id];
-            const initial = (p.name || "؟").charAt(0);
-            return `<li class="player-pill" style="--i:${i}">
-              <span class="player-pill__avatar">${initial}</span>
-              <span class="player-pill__name">${escapeHtml(p.name)}</span>
-            </li>`;
-          })
-          .join("");
-      }
-      $("#startGameBtn").disabled = ids.length === 0;
-      $("#lobbyHint").textContent = ids.length === 0
-        ? "في انتظار انضمام اللاعبين…"
-        : `${ar(ids.length)} ${ids.length === 1 ? "لاعب انضم" : ids.length === 2 ? "لاعبان انضما" : "لاعبين انضموا"} — جاهز للبدء.`;
     }
 
     /* ---- بدء اللعبة ---- */
-    $("#startGameBtn").addEventListener("click", () => {
-      state.currentQ = 0;
-      goToQuestion();
+    $("#startGameBtn")?.addEventListener("click", () => {
+      state.status = "board";
+      Transport.write(code, state);
     });
 
-    /* ---- مسار السؤال ---- */
-    function goToQuestion() {
-      state.status = "question";
-      state.revealed = false;
-      state.currentAnswers = {};
-      state.questionStartedAt = Date.now();
-      save();
+    /* ---- لوحة الفئات ---- */
+    function renderBoard() {
+      // تحديث النتائج
+      $("#hostTeam1Name").textContent = state.teams.team1.name;
+      $("#hostTeam2Name").textContent = state.teams.team2.name;
+      $("#hostTeam1Score").textContent = ar(state.teams.team1.score);
+      $("#hostTeam2Score").textContent = ar(state.teams.team2.score);
 
-      const q = QUESTIONS[state.currentQ];
-      $("#qRoundLabel").textContent = `السؤال ${ar(state.currentQ + 1)} / ${ar(QUESTIONS.length)}`;
-      $("#qCategoryBadge").textContent = q.category || "عام";
-      $("#qCategory").textContent = q.category || "عام";
-      $("#qDifficulty").textContent = q.difficulty || "متوسط";
-      $("#questionText").textContent = q.question;
+      // تحديد دور الفريق
+      const turnTeam = state.teams[state.currentTurn].name;
+      $("#hostTurnIndicator").textContent = `دور: ${turnTeam}`;
+      $("#hostTeam1Card")?.classList.toggle("team-card--active", state.currentTurn === "team1");
+      $("#hostTeam2Card")?.classList.toggle("team-card--active", state.currentTurn === "team2");
 
-      const img = $("#questionImage");
-      if (q.image) {
-        img.src = q.image; img.style.display = "block";
-      } else {
-        img.removeAttribute("src"); img.style.display = "none";
+      // اللوحة
+      const grid = $("#boardGrid");
+      grid.innerHTML = CATEGORIES.map((cat, ci) => `
+        <div class="cat-col">
+          <div class="cat-col__head">
+            <div class="cat-col__emoji">${cat.emoji}</div>
+            <div class="cat-col__name">${escapeHtml(cat.name)}</div>
+          </div>
+          ${cat.questions.map(q => {
+            const used = state.used.includes(`${ci}-${q.points}`);
+            return `<div class="cat-tile ${used ? 'cat-tile--used' : ''}">${used ? "✓" : ar(q.points)}</div>`;
+          }).join("")}
+        </div>
+      `).join("");
+
+      // تحقق إذا انتهت اللعبة
+      if (state.used.length >= CATEGORIES.length * 3) {
+        setTimeout(() => {
+          state.status = "final";
+          Transport.write(code, state);
+        }, 1500);
       }
+    }
 
-      const grid = $("#optionsGrid");
-      const arabicLetters = ["أ", "ب", "ج", "د"];
-      grid.innerHTML = q.options.map((opt, i) =>
-        `<div class="option-card" data-opt="${escapeHtml(opt)}" style="--i:${i}">
-          <span class="option-card__letter">${arabicLetters[i]}</span>
-          <span class="option-card__text">${escapeHtml(opt)}</span>
-        </div>`
-      ).join("");
+    /* ---- عرض السؤال ---- */
+    function renderQuestion() {
+      const cat = CATEGORIES[state.selectedCategory];
+      const q = cat.questions.find(qq => qq.points === state.selectedDifficulty);
+      if (!q) return;
 
-      $("#totalPlayers").textContent = ar(Object.keys(state.players).length);
-      $("#answerCount").textContent = "٠";
-      $("#nextQuestionBtn").disabled = true;
-      $("#showAnswerBtn").disabled = false;
-
-      showScreen("question");
-      startTimer();
+      $("#qCategoryName").textContent = `${cat.emoji} ${cat.name}`;
+      $("#qPointsValue").textContent = ar(state.selectedDifficulty);
+      $("#qTeamTurn").textContent = state.teams[state.currentTurn].name;
+      $("#questionText").textContent = q.question;
     }
 
     function startTimer() {
       const total = CFG.questionTime;
-      let remaining = total;
       const ring = $("#timerRing");
       const circumference = 2 * Math.PI * 54;
       ring.style.strokeDasharray = circumference;
       ring.style.strokeDashoffset = "0";
-
-      $("#timerNum").textContent = ar(remaining);
+      $("#timerNum").textContent = ar(total);
 
       clearInterval(timerInterval);
-      const tickStart = Date.now();
+      const tickStart = state.questionStartedAt;
       timerInterval = setInterval(() => {
         const elapsed = (Date.now() - tickStart) / 1000;
-        remaining = Math.max(0, total - elapsed);
+        const remaining = Math.max(0, total - elapsed);
         $("#timerNum").textContent = ar(Math.ceil(remaining));
         ring.style.strokeDashoffset = circumference * (1 - remaining / total);
         if (remaining <= 0) {
           clearInterval(timerInterval);
-          if (!state.revealed) revealAnswer();
         }
       }, 100);
     }
 
-    function renderAnswerCount() {
-      $("#answerCount").textContent = ar(Object.keys(state.currentAnswers).length);
+    function showResult() {
+      const r = state.lastResult;
+      if (!r) return;
+      const teamName = state.teams[r.team].name;
+      const cat = CATEGORIES[state.selectedCategory];
+      const q = cat.questions.find(qq => qq.points === state.selectedDifficulty);
+
+      $("#resultIcon").textContent = r.correct ? "✓" : "✗";
+      $("#resultBox").classList.toggle("result-box--correct", r.correct);
+      $("#resultBox").classList.toggle("result-box--wrong", !r.correct);
+      $("#resultVerdict").textContent = r.correct ? "إجابة صحيحة!" : "إجابة خاطئة";
+      $("#resultPoints").textContent = r.correct
+        ? `+${ar(r.points)} نقطة لـ ${teamName}`
+        : `لا نقاط لـ ${teamName}`;
+      $("#resultCorrectAnswer").textContent = q.correctAnswer;
     }
-
-    /* ---- كشف الإجابة ---- */
-    $("#showAnswerBtn").addEventListener("click", revealAnswer);
-
-    function revealAnswer() {
-      if (state.revealed) return;
-      clearInterval(timerInterval);
-      state.revealed = true;
-
-      const q = QUESTIONS[state.currentQ];
-
-      $$(".option-card").forEach(card => {
-        const opt = card.dataset.opt;
-        if (opt === q.correctAnswer) card.classList.add("option-card--correct");
-        else card.classList.add("option-card--wrong");
-      });
-
-      let correctN = 0, wrongN = 0, totalTime = 0, timedAnswers = 0;
-      Object.keys(state.currentAnswers).forEach(pid => {
-        const a = state.currentAnswers[pid];
-        const player = state.players[pid];
-        if (!player) return;
-        const elapsedSec = (a.time - state.questionStartedAt) / 1000;
-        const remaining = CFG.questionTime - elapsedSec;
-        if (a.option === q.correctAnswer) {
-          const points = computePoints(remaining);
-          player.score = (player.score || 0) + points;
-          player.correct = (player.correct || 0) + 1;
-          player.lastPoints = points;
-          player.lastResult = "correct";
-          correctN++;
-        } else {
-          player.lastPoints = 0;
-          player.lastResult = "wrong";
-          wrongN++;
-        }
-        player.totalTime = (player.totalTime || 0) + elapsedSec;
-        player.answers = (player.answers || 0) + 1;
-        totalTime += elapsedSec;
-        timedAnswers++;
-      });
-
-      Object.keys(state.players).forEach(pid => {
-        if (!state.currentAnswers[pid]) {
-          state.players[pid].lastPoints = 0;
-          state.players[pid].lastResult = "missed";
-        }
-      });
-
-      $("#correctCount").textContent = ar(correctN);
-      $("#wrongCount").textContent = ar(wrongN);
-      $("#avgTime").textContent = timedAnswers > 0
-        ? ar((totalTime / timedAnswers).toFixed(1)) + "ث"
-        : "—";
-
-      $("#revealAnswerText").textContent = q.correctAnswer;
-      $("#revealExplanation").textContent = q.explanation || "";
-
-      $("#nextQuestionBtn").disabled = false;
-      $("#showAnswerBtn").disabled = true;
-
-      state.status = "reveal";
-      save();
-
-      setTimeout(() => {
-        showScreen("reveal");
-      }, 1800);
-    }
-
-    function computePoints(remainingSec) {
-      const s = CFG.scoring;
-      if (remainingSec >= s.tier1.minRemaining) return s.tier1.points;
-      if (remainingSec >= s.tier2.minRemaining) return s.tier2.points;
-      if (remainingSec >= s.tier3.minRemaining) return s.tier3.points;
-      if (remainingSec > 0) return s.tier4.points;
-      return 0;
-    }
-
-    /* ---- المتصدرون ---- */
-    $("#showLeaderboardBtn").addEventListener("click", showLeaderboard);
-
-    function showLeaderboard() {
-      state.status = "leaderboard";
-      save();
-
-      const sorted = Object.entries(state.players)
-        .map(([id, p]) => ({ id, ...p, score: p.score || 0 }))
-        .sort((a, b) => b.score - a.score);
-
-      $("#lbRoundLabel").textContent = `بعد السؤال ${ar(state.currentQ + 1)}`;
-
-      const top3 = sorted.slice(0, 3);
-      const podium = $("#podium");
-      podium.innerHTML = "";
-      const order = [1, 0, 2];
-      order.forEach(idx => {
-        if (!top3[idx]) return;
-        const p = top3[idx];
-        const place = idx + 1;
-        podium.innerHTML += `
-          <div class="podium__col podium__col--p${place}" style="--i:${idx}">
-            <div class="podium__crown">${place === 1 ? "👑" : ""}</div>
-            <div class="podium__avatar">${escapeHtml((p.name || "؟").charAt(0))}</div>
-            <div class="podium__name">${escapeHtml(p.name)}</div>
-            <div class="podium__score">${ar(p.score)}</div>
-            <div class="podium__plinth">#${ar(place)}</div>
-          </div>
-        `;
-      });
-
-      const rest = sorted.slice(3);
-      $("#restList").innerHTML = rest.map((p, i) => `
-        <li class="rest-row" style="--i:${i}">
-          <span class="rest-row__rank">#${ar(i + 4)}</span>
-          <span class="rest-row__name">${escapeHtml(p.name)}</span>
-          <span class="rest-row__score">${ar(p.score)}</span>
-        </li>
-      `).join("");
-
-      const isLast = state.currentQ >= QUESTIONS.length - 1;
-      $("#continueBtn").innerHTML = isLast
-        ? `<span class="btn__label">عرض النتائج النهائية ←</span>`
-        : `<span class="btn__label">السؤال التالي ←</span>`;
-
-      showScreen("leaderboard");
-    }
-
-    /* ---- التالي / النهاية ---- */
-    $("#nextQuestionBtn").addEventListener("click", showLeaderboard);
-
-    $("#continueBtn").addEventListener("click", () => {
-      if (state.currentQ >= QUESTIONS.length - 1) {
-        showFinal();
-      } else {
-        state.currentQ++;
-        goToQuestion();
-      }
-    });
 
     function showFinal() {
-      state.status = "final";
-      save();
-
-      const sorted = Object.entries(state.players)
-        .map(([id, p]) => ({ id, ...p, score: p.score || 0 }))
-        .sort((a, b) => b.score - a.score);
-
-      const champ = sorted[0];
-      if (champ) {
-        $("#championName").textContent = champ.name;
-        $("#championScore").textContent = ar(champ.score);
+      clearInterval(timerInterval);
+      const t1 = state.teams.team1;
+      const t2 = state.teams.team2;
+      let winnerName, winnerScore, loserName, loserScore;
+      if (t1.score > t2.score) {
+        winnerName = t1.name; winnerScore = t1.score;
+        loserName  = t2.name; loserScore  = t2.score;
+      } else if (t2.score > t1.score) {
+        winnerName = t2.name; winnerScore = t2.score;
+        loserName  = t1.name; loserScore  = t1.score;
+      } else {
+        $("#finalChampion").textContent = "تعادل!";
+        $("#finalScores").textContent = `${t1.name}: ${ar(t1.score)} · ${t2.name}: ${ar(t2.score)}`;
+        return;
       }
-
-      const top3 = sorted.slice(0, 3);
-      const podium = $("#finalPodium");
-      podium.innerHTML = "";
-      [1, 0, 2].forEach(idx => {
-        if (!top3[idx]) return;
-        const p = top3[idx];
-        const place = idx + 1;
-        podium.innerHTML += `
-          <div class="podium__col podium__col--p${place}" style="--i:${idx}">
-            <div class="podium__crown">${place === 1 ? "👑" : place === 2 ? "🥈" : "🥉"}</div>
-            <div class="podium__avatar">${escapeHtml((p.name || "؟").charAt(0))}</div>
-            <div class="podium__name">${escapeHtml(p.name)}</div>
-            <div class="podium__score">${ar(p.score)}</div>
-            <div class="podium__plinth">#${ar(place)}</div>
-          </div>
-        `;
-      });
-
-      const rest = sorted.slice(3);
-      $("#finalRestList").innerHTML = rest.map((p, i) => `
-        <li class="rest-row" style="--i:${i}">
-          <span class="rest-row__rank">#${ar(i + 4)}</span>
-          <span class="rest-row__name">${escapeHtml(p.name)}</span>
-          <span class="rest-row__score">
-            ${ar(p.score)}
-            <em>${ar(p.correct || 0)} صحيحة</em>
-          </span>
-        </li>
-      `).join("");
-
-      showScreen("final");
+      $("#finalChampion").textContent = winnerName;
+      $("#finalScores").innerHTML = `
+        <div class="final-row final-row--winner">
+          <span>${escapeHtml(winnerName)}</span>
+          <strong>${ar(winnerScore)}</strong>
+        </div>
+        <div class="final-row">
+          <span>${escapeHtml(loserName)}</span>
+          <strong>${ar(loserScore)}</strong>
+        </div>
+      `;
     }
 
     /* ---- إعادة اللعبة ---- */
-    $("#restartBtn").addEventListener("click", () => {
-      Object.keys(state.players).forEach(pid => {
-        state.players[pid].score = 0;
-        state.players[pid].correct = 0;
-        state.players[pid].answers = 0;
-        state.players[pid].totalTime = 0;
-      });
-      state.currentQ = -1;
-      state.status = "lobby";
-      state.currentAnswers = {};
-      state.revealed = false;
-      save();
-      showScreen("lobby");
-      renderPlayers();
+    $("#restartBtn")?.addEventListener("click", () => {
+      state.teams.team1.score = 0;
+      state.teams.team2.score = 0;
+      state.used = [];
+      state.currentTurn = "team1";
+      state.status = "board";
+      state.lastResult = null;
+      Transport.write(code, state);
     });
   }
 
   /* ============================================================
-   * متحكم اللاعب
+   * شاشة الحكم (judge.html)
    * ============================================================ */
-  function initPlayer() {
+  function initJudge() {
     let code = "";
-    let playerId = "";
-    let playerName = "";
-    let lastSeenStatus = "";
-    let lastSeenQ = -1;
-    let lastSeenRevealed = false;
-    let pTimerInterval = null;
+    let connected = false;
 
-    /* ---- الانضمام ---- */
-    $("#codeInput").addEventListener("input", (e) => {
+    // قراءة الرمز من URL
+    const urlCode = new URLSearchParams(location.search).get("code");
+    if (urlCode) {
+      $("#judgeCodeInput").value = urlCode.toUpperCase();
+    }
+
+    $("#judgeCodeInput")?.addEventListener("input", (e) => {
       e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
     });
 
-    $("#joinBtn").addEventListener("click", () => {
-      const c = $("#codeInput").value.trim().toUpperCase();
-      const n = $("#nameInput").value.trim();
-      const hint = $("#joinHint");
+    $("#judgeConnectBtn")?.addEventListener("click", () => {
+      const c = $("#judgeCodeInput").value.trim().toUpperCase();
+      const hint = $("#judgeHint");
       hint.textContent = "";
-      hint.className = "pjoin__hint";
 
-      if (c.length !== 6) { hint.textContent = "الرمز يجب أن يكون ٦ خانات."; hint.classList.add("pjoin__hint--err"); return; }
-      if (n.length < 2)   { hint.textContent = "اكتب اسماً (حرفان على الأقل).";    hint.classList.add("pjoin__hint--err"); return; }
-
-      const state = LocalTransport.read(c);
-      if (!state) { hint.textContent = "اللعبة غير موجودة. تأكد من الرمز."; hint.classList.add("pjoin__hint--err"); return; }
-      if (state.status !== "lobby") { hint.textContent = "اللعبة بدأت بالفعل."; hint.classList.add("pjoin__hint--err"); return; }
-
-      const dup = Object.values(state.players || {}).some(p => p.name.toLowerCase() === n.toLowerCase());
-      if (dup) { hint.textContent = "الاسم مستخدم بالفعل."; hint.classList.add("pjoin__hint--err"); return; }
+      if (c.length !== 6) {
+        hint.textContent = "الرمز ٦ خانات.";
+        hint.classList.add("hint--err");
+        return;
+      }
+      const state = Transport.read(c);
+      if (!state) {
+        hint.textContent = "اللعبة غير موجودة.";
+        hint.classList.add("hint--err");
+        return;
+      }
 
       code = c;
-      playerName = n;
-      playerId = "p_" + Math.random().toString(36).slice(2, 10);
-      state.players[playerId] = {
-        name: n, score: 0, correct: 0, answers: 0, totalTime: 0
-      };
-      LocalTransport.write(code, state);
+      state.judgeConnected = true;
+      Transport.write(code, state);
+      connected = true;
 
-      $("#waitName").textContent = n;
-      $("#pHeaderName").textContent = n;
-      showPlayer("wait");
+      // إعدادات الفريقين
+      $("#team1NameInput").value = state.teams.team1.name;
+      $("#team2NameInput").value = state.teams.team2.name;
+
+      showScreen("setup", "data-jscreen");
       startWatching();
     });
 
-    function showPlayer(name) {
-      showScreen(name, "data-pscreen");
-    }
+    $("#saveTeamsBtn")?.addEventListener("click", () => {
+      const state = Transport.read(code);
+      if (!state) return;
+      const n1 = $("#team1NameInput").value.trim() || CFG.teamNames.team1;
+      const n2 = $("#team2NameInput").value.trim() || CFG.teamNames.team2;
+      state.teams.team1.name = n1;
+      state.teams.team2.name = n2;
+      Transport.write(code, state);
+      showScreen("waiting", "data-jscreen");
+    });
 
     function startWatching() {
-      LocalTransport.poll(code, (state) => {
+      Transport.poll(code, (state) => {
         if (!state) return;
-        const me = state.players[playerId];
-        if (!me) return;
 
-        $("#pHeaderScore").textContent = ar(me.score || 0);
-
-        if (state.status === "question" && (state.currentQ !== lastSeenQ || lastSeenStatus !== "question")) {
-          lastSeenQ = state.currentQ;
-          lastSeenRevealed = false;
-          renderQuestion(state);
+        if (state.status === "board" || state.status === "selecting-difficulty") {
+          showScreen("waiting", "data-jscreen");
+          $("#waitingMsg").textContent = state.status === "board"
+            ? `${state.teams[state.currentTurn].name} يختار الفئة…`
+            : "اللاعب يختار درجة الصعوبة…";
+        } else if (state.status === "question" || state.status === "judging") {
+          renderJudgeQuestion(state);
+          showScreen("judging", "data-jscreen");
+        } else if (state.status === "result") {
+          showScreen("waiting", "data-jscreen");
+          $("#waitingMsg").textContent = "ينتقل للسؤال التالي…";
+        } else if (state.status === "final") {
+          showScreen("ended", "data-jscreen");
+        } else if (state.status === "lobby") {
+          showScreen("waiting", "data-jscreen");
+          $("#waitingMsg").textContent = "في انتظار بدء اللعبة من الشاشة الرئيسية…";
         }
-
-        if (state.status === "reveal" && !lastSeenRevealed) {
-          lastSeenRevealed = true;
-          showResult(state);
-        }
-
-        if (state.status === "final" && lastSeenStatus !== "final") {
-          showFinal(state);
-        }
-
-        lastSeenStatus = state.status;
-      }, 400);
+      }, 300);
     }
 
-    function renderQuestion(state) {
-      clearInterval(pTimerInterval);
-      const q = QUESTIONS[state.currentQ];
-      $("#pQuestionHint").textContent = `السؤال ${ar(state.currentQ + 1)} · ${q.category || "عام"}`;
+    function renderJudgeQuestion(state) {
+      const cat = CATEGORIES[state.selectedCategory];
+      const q = cat.questions.find(qq => qq.points === state.selectedDifficulty);
+      if (!q) return;
 
-      const opts = $("#pOptions");
-      const arabicLetters = ["أ", "ب", "ج", "د"];
-      const colors = ["a", "b", "c", "d"];
-      opts.innerHTML = q.options.map((opt, i) => {
-        return `<button class="poption poption--${colors[i]}" data-opt="${escapeHtml(opt)}" style="--i:${i}">
-          <span class="poption__letter">${arabicLetters[i]}</span>
-          <span class="poption__text">${escapeHtml(opt)}</span>
-        </button>`;
-      }).join("");
-
-      $$(".poption").forEach(b => {
-        b.addEventListener("click", () => submitAnswer(b.dataset.opt));
-      });
-
-      const total = CFG.questionTime;
-      const bar = $("#pTimerBar");
-      const num = $("#pTimerNum");
-
-      pTimerInterval = setInterval(() => {
-        const cur = LocalTransport.read(code);
-        if (!cur || cur.status !== "question") {
-          clearInterval(pTimerInterval); return;
-        }
-        const elapsed = (Date.now() - cur.questionStartedAt) / 1000;
-        const remaining = Math.max(0, total - elapsed);
-        num.textContent = ar(Math.ceil(remaining));
-        bar.style.transform = `scaleX(${remaining / total})`;
-        if (remaining <= 0) clearInterval(pTimerInterval);
-      }, 100);
-
-      showPlayer("answer");
-    }
-
-    function submitAnswer(option) {
-      const state = LocalTransport.read(code);
-      if (!state || state.status !== "question") return;
-      if (state.currentAnswers[playerId]) return;
-
-      state.currentAnswers[playerId] = { option, time: Date.now() };
-      LocalTransport.write(code, state);
-
-      $$(".poption").forEach(b => {
-        if (b.dataset.opt === option) b.classList.add("poption--selected");
-        b.disabled = true;
-      });
-
-      setTimeout(() => showPlayer("submitted"), 350);
-    }
-
-    function showResult(state) {
-      clearInterval(pTimerInterval);
-      const me = state.players[playerId];
-      const sorted = Object.entries(state.players)
-        .map(([id, p]) => ({ id, score: p.score || 0 }))
-        .sort((a, b) => b.score - a.score);
-      const myRank = sorted.findIndex(p => p.id === playerId) + 1;
-
-      const box = $("#presultBox");
-      box.classList.remove("presult--correct", "presult--wrong", "presult--missed");
-
-      if (me.lastResult === "correct") {
-        box.classList.add("presult--correct");
-        $("#presultIcon").textContent = "✓";
-        $("#presultVerdict").textContent = "إجابة صحيحة!";
-      } else if (me.lastResult === "wrong") {
-        box.classList.add("presult--wrong");
-        $("#presultIcon").textContent = "✗";
-        $("#presultVerdict").textContent = "إجابة خاطئة";
+      $("#judgeCategoryName").textContent = `${cat.emoji} ${cat.name}`;
+      $("#judgePoints").textContent = ar(state.selectedDifficulty);
+      $("#judgeTeamTurn").textContent = state.teams[state.currentTurn].name;
+      $("#judgeQuestionText").textContent = q.question;
+      $("#judgeAnswerText").textContent = q.correctAnswer;
+      if (q.hint && q.hint.trim()) {
+        $("#judgeHintRow").classList.remove("hidden");
+        $("#judgeHintText").textContent = q.hint;
       } else {
-        box.classList.add("presult--missed");
-        $("#presultIcon").textContent = "—";
-        $("#presultVerdict").textContent = "لم تُجِب";
+        $("#judgeHintRow").classList.add("hidden");
       }
-
-      $("#presultPoints").textContent = ar(me.lastPoints || 0);
-      $("#presultRank").textContent = "#" + ar(myRank);
-      $("#presultTotal").textContent = ar(me.score || 0);
-
-      showPlayer("result");
     }
 
-    function showFinal(state) {
-      const me = state.players[playerId];
-      const sorted = Object.entries(state.players)
-        .map(([id, p]) => ({ id, score: p.score || 0 }))
-        .sort((a, b) => b.score - a.score);
-      const myRank = sorted.findIndex(p => p.id === playerId) + 1;
+    $("#judgeCorrectBtn")?.addEventListener("click", () => decide(true));
+    $("#judgeWrongBtn")?.addEventListener("click", () => decide(false));
 
-      $("#pfinalRank").textContent = "#" + ar(myRank);
-      $("#pfinalName").textContent = me.name;
-      $("#pfinalScore").textContent = ar(me.score || 0);
-      $("#pfinalCorrect").textContent = ar(me.correct || 0);
-      showPlayer("final");
+    function decide(isCorrect) {
+      const state = Transport.read(code);
+      if (!state || (state.status !== "question" && state.status !== "judging")) return;
+
+      const team = state.currentTurn;
+      const points = state.selectedDifficulty;
+      if (isCorrect) {
+        state.teams[team].score += points;
+      }
+      state.lastResult = { team, points, correct: isCorrect };
+      state.used.push(`${state.selectedCategory}-${state.selectedDifficulty}`);
+      state.status = "result";
+      Transport.write(code, state);
+
+      // بعد ٤ ثواني، يرجع للوحة ويبدّل الدور
+      setTimeout(() => {
+        const cur = Transport.read(code);
+        if (!cur) return;
+        if (cur.used.length >= CATEGORIES.length * 3) {
+          cur.status = "final";
+        } else {
+          cur.currentTurn = cur.currentTurn === "team1" ? "team2" : "team1";
+          cur.status = "board";
+        }
+        cur.selectedCategory = -1;
+        cur.selectedDifficulty = 0;
+        Transport.write(code, cur);
+      }, 4000);
     }
   }
 
-  /* ---------- أدوات ---------- */
+  /* ============================================================
+   * شاشة اللاعب (player.html)
+   * ============================================================ */
+  function initPlayer() {
+    let code = "";
+
+    const urlCode = new URLSearchParams(location.search).get("code");
+    if (urlCode) {
+      $("#playerCodeInput").value = urlCode.toUpperCase();
+    }
+
+    $("#playerCodeInput")?.addEventListener("input", (e) => {
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    });
+
+    $("#playerConnectBtn")?.addEventListener("click", () => {
+      const c = $("#playerCodeInput").value.trim().toUpperCase();
+      const hint = $("#playerHint");
+      hint.textContent = "";
+
+      if (c.length !== 6) {
+        hint.textContent = "الرمز ٦ خانات.";
+        hint.classList.add("hint--err");
+        return;
+      }
+      const state = Transport.read(c);
+      if (!state) {
+        hint.textContent = "اللعبة غير موجودة.";
+        hint.classList.add("hint--err");
+        return;
+      }
+
+      code = c;
+      state.playerConnected = true;
+      Transport.write(code, state);
+      startWatching();
+    });
+
+    function startWatching() {
+      Transport.poll(code, (state) => {
+        if (!state) return;
+
+        if (state.status === "lobby") {
+          showScreen("waiting", "data-pscreen");
+          $("#playerWaitMsg").textContent = "في انتظار بدء اللعبة…";
+        } else if (state.status === "board") {
+          renderCategorySelect(state);
+        } else if (state.status === "selecting-difficulty") {
+          renderDifficultySelect(state);
+        } else if (state.status === "question" || state.status === "judging") {
+          showScreen("answering", "data-pscreen");
+          $("#playerAnsweringTeam").textContent = state.teams[state.currentTurn].name;
+        } else if (state.status === "result") {
+          renderResult(state);
+        } else if (state.status === "final") {
+          showScreen("ended", "data-pscreen");
+        }
+      }, 300);
+    }
+
+    function renderCategorySelect(state) {
+      const turnTeam = state.teams[state.currentTurn].name;
+      $("#playerTurnLabel").textContent = `دور: ${turnTeam}`;
+      $("#playerStepLabel").textContent = "اختر الفئة";
+
+      const grid = $("#playerCategoryGrid");
+      grid.innerHTML = CATEGORIES.map((cat, ci) => {
+        const allUsed = cat.questions.every(q => state.used.includes(`${ci}-${q.points}`));
+        return `<button class="picker-tile ${allUsed ? 'picker-tile--used' : ''}" data-cat="${ci}" ${allUsed ? "disabled" : ""}>
+          <span class="picker-tile__emoji">${cat.emoji}</span>
+          <span class="picker-tile__name">${escapeHtml(cat.name)}</span>
+        </button>`;
+      }).join("");
+
+      $$(".picker-tile").forEach(t => {
+        t.addEventListener("click", () => {
+          const ci = parseInt(t.dataset.cat);
+          const cur = Transport.read(code);
+          cur.selectedCategory = ci;
+          cur.status = "selecting-difficulty";
+          Transport.write(code, cur);
+        });
+      });
+
+      // تحديث النتائج في الأعلى
+      $("#playerTeam1Name").textContent = state.teams.team1.name;
+      $("#playerTeam2Name").textContent = state.teams.team2.name;
+      $("#playerTeam1Score").textContent = ar(state.teams.team1.score);
+      $("#playerTeam2Score").textContent = ar(state.teams.team2.score);
+
+      showScreen("picking", "data-pscreen");
+    }
+
+    function renderDifficultySelect(state) {
+      const cat = CATEGORIES[state.selectedCategory];
+      $("#playerStepLabel").textContent = `اختر درجة الصعوبة`;
+      $("#playerCatHeader").innerHTML = `<span class="cat-emoji-big">${cat.emoji}</span> ${escapeHtml(cat.name)}`;
+
+      const points = [200, 400, 600];
+      const grid = $("#playerDifficultyGrid");
+      grid.innerHTML = points.map(p => {
+        const used = state.used.includes(`${state.selectedCategory}-${p}`);
+        return `<button class="diff-tile diff-tile--p${p} ${used ? 'diff-tile--used' : ''}" data-pts="${p}" ${used ? "disabled" : ""}>
+          <span class="diff-tile__num">${used ? "✓" : ar(p)}</span>
+          <span class="diff-tile__lbl">${used ? "مستخدم" : "نقطة"}</span>
+        </button>`;
+      }).join("");
+
+      $$(".diff-tile").forEach(t => {
+        t.addEventListener("click", () => {
+          const pts = parseInt(t.dataset.pts);
+          const cur = Transport.read(code);
+          cur.selectedDifficulty = pts;
+          cur.status = "question";
+          cur.questionStartedAt = Date.now();
+          Transport.write(code, cur);
+        });
+      });
+
+      $("#playerBackToCat")?.addEventListener("click", () => {
+        const cur = Transport.read(code);
+        cur.selectedCategory = -1;
+        cur.status = "board";
+        Transport.write(code, cur);
+      });
+
+      showScreen("difficulty", "data-pscreen");
+    }
+
+    function renderResult(state) {
+      const r = state.lastResult;
+      if (!r) return;
+      const teamName = state.teams[r.team].name;
+      $("#playerResultIcon").textContent = r.correct ? "✓" : "✗";
+      $("#playerResultBox").classList.toggle("result-box--correct", r.correct);
+      $("#playerResultBox").classList.toggle("result-box--wrong", !r.correct);
+      $("#playerResultVerdict").textContent = r.correct ? "إجابة صحيحة!" : "إجابة خاطئة";
+      $("#playerResultPoints").textContent = r.correct
+        ? `+${ar(r.points)} نقطة لـ ${teamName}`
+        : `لا نقاط لـ ${teamName}`;
+      showScreen("result", "data-pscreen");
+    }
+  }
+
+  /* ---------- escape ---------- */
   function escapeHtml(str) {
     return String(str || "")
       .replace(/&/g, "&amp;")
@@ -643,6 +603,6 @@
       .replace(/'/g, "&#039;");
   }
 
-  /* ---------- تصدير ---------- */
-  window.QuizArena = { initHost, initPlayer };
+  /* ---------- export ---------- */
+  window.MamaHanaa = { initHost, initJudge, initPlayer };
 })();
