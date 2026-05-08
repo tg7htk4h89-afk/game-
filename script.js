@@ -125,19 +125,33 @@
 
     async create(code, state) {
       state.lastUpdate = Date.now();
-      const r = await fetch(`${this.base()}/mama-hanaa-create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: { code, state } })
-      });
-      if (!r.ok) throw new Error("فشل إنشاء اللعبة");
-      return state;
+      const url = `${this.base()}/mama-hanaa-create`;
+      console.log("→ POST", url, { code });
+      try {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, state })
+        });
+        const text = await r.text();
+        console.log("← create response:", r.status, text.substring(0, 200));
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}: ${text.substring(0, 100)}`);
+        }
+        return state;
+      } catch (e) {
+        console.error("create error details:", e);
+        throw e;
+      }
     },
 
     async read(code) {
       try {
         const r = await fetch(`${this.base()}/mama-hanaa-read?code=${encodeURIComponent(code)}`);
-        if (!r.ok) return null;
+        if (!r.ok) {
+          console.warn("read returned", r.status);
+          return null;
+        }
         const data = await r.json();
         return data && data.state ? data.state : null;
       } catch (e) {
@@ -148,13 +162,22 @@
 
     async write(code, state) {
       state.lastUpdate = Date.now();
-      const r = await fetch(`${this.base()}/mama-hanaa-write`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: { code, state } })
-      });
-      if (!r.ok) throw new Error("فشل تحديث الحالة");
-      return state;
+      const url = `${this.base()}/mama-hanaa-write`;
+      try {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, state })
+        });
+        if (!r.ok) {
+          const text = await r.text();
+          throw new Error(`HTTP ${r.status}: ${text.substring(0, 100)}`);
+        }
+        return state;
+      } catch (e) {
+        console.error("write error:", e);
+        throw e;
+      }
     },
 
     poll(code, callback, intervalMs = 1500) {
@@ -222,17 +245,33 @@
   function initHost() {
     const code = randCode();
     let state = newGameState(code);
-
-    // أنشئ اللعبة على الخادم
-    Transport.create(code, state).catch(err => {
-      console.error("create failed", err);
-      alert("فشل الاتصال بالخادم. تأكد من إعدادات n8n.");
-    });
-
     let timerInterval = null;
+    let pollStop = null;
 
     /* ---- قاعة الانتظار ---- */
     $("#gameCodeDisplay").textContent = code.split("").join(" ");
+    $("#lobbyHint") && ($("#lobbyHint").textContent = "جارٍ إنشاء اللعبة على الخادم…");
+
+    // أنشئ اللعبة على الخادم — مهم: ننتظر النتيجة قبل ما نبدأ الـ poll
+    (async () => {
+      try {
+        await Transport.create(code, state);
+        console.log("✓ Game created in DB:", code);
+        if ($("#lobbyHint")) $("#lobbyHint").textContent = "في انتظار انضمام الحكم واللاعب…";
+
+        // نبدأ المتابعة بعد ما نتأكد إن اللعبة انحفظت
+        pollStop = Transport.poll(code, (newState) => {
+          if (!newState) return;
+          state = newState;
+          handleStateChange();
+        });
+      } catch (err) {
+        console.error("✗ create failed:", err);
+        const errMsg = "فشل إنشاء اللعبة على الخادم.\n\nالخطأ: " + err.message + "\n\nتحقق من Console (F12) لمزيد من التفاصيل.";
+        alert(errMsg);
+        if ($("#lobbyHint")) $("#lobbyHint").textContent = "❌ فشل الاتصال بالخادم — افتح Console للتفاصيل";
+      }
+    })();
     $("#copyJudgeLink")?.addEventListener("click", () => {
       const link = `${location.origin}${location.pathname.replace("host.html","")}judge.html?code=${code}`;
       navigator.clipboard?.writeText(link);
@@ -252,13 +291,6 @@
 
     let lastSeenStatus = "";
     let lastSeenQuestionStart = 0;
-
-    // متابعة تغيرات الحالة
-    Transport.poll(code, (newState) => {
-      if (!newState) return;
-      state = newState;
-      handleStateChange();
-    });
 
     function handleStateChange() {
       // تحديث مؤشرات الاتصال في قاعة الانتظار
