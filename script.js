@@ -43,8 +43,8 @@
     return out;
   };
 
-  // درجات الصعوبة الـ ٥ (٢٠٠ سهل، ١٠٠٠ صعب)
-  const POINTS_TIERS = [200, 400, 600, 800, 1000];
+  // درجات الصعوبة الـ ٦ (٢٠٠ سهل، ١٢٠٠ صعب)
+  const POINTS_TIERS = [200, 400, 600, 800, 1000, 1200];
 
   // hash بسيط للسؤال (DJB2) — متطابق مع نفس النص دائماً
   const hashQuestion = (text) => {
@@ -1108,10 +1108,10 @@
       grid.innerHTML = state.gameCategories.map((cat, ci) => {
         const myCount = teamCountInCategory(state, myTeam, ci);
         const allUsed = cat.questions.every(q => state.used.includes(`${ci}-${q.points}`));
-        // حد أقصى ٢ سؤال لكل فريق من كل فئة (للعدل التام)
-        const maxedOut = myCount >= 2;
+        // حد أقصى ٣ سؤال لكل فريق من كل فئة (للعدل التام: ٣ × ٦ = ١٨)
+        const maxedOut = myCount >= 3;
         const disabled = allUsed || maxedOut;
-        const remainingTxt = maxedOut ? "٢/٢ ✓" : `${ar(myCount)}/٢`;
+        const remainingTxt = maxedOut ? "٣/٣ ✓" : `${ar(myCount)}/٣`;
         return `<button class="picker-tile ${disabled ? 'picker-tile--used' : ''}" data-cat="${ci}" ${disabled ? "disabled" : ""}>
           <span class="picker-tile__emoji">${cat.emoji}</span>
           <span class="picker-tile__name">${escapeHtml(cat.name)}</span>

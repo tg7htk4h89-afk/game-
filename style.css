@@ -272,17 +272,68 @@ em {
   font-weight: 700; text-align: left;
 }
 
+.lobby-banner {
+  text-align: center;
+  padding: 50px 40px 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+.lobby-banner::before,
+.lobby-banner::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(700px, 70%);
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--ink-soft, rgba(0,0,0,.25)), transparent);
+}
+.lobby-banner::before { top: 24px; }
+.lobby-banner::after  { bottom: 14px; }
+.lobby-banner__eyebrow {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.lobby-banner__title {
+  font-family: var(--font-display);
+  font-size: clamp(56px, 8vw, 110px);
+  line-height: 1;
+  font-weight: 700;
+  margin: 0;
+  color: var(--ink);
+  letter-spacing: -1px;
+}
+.lobby-banner__name {
+  font-family: var(--font-display);
+  font-size: clamp(80px, 12vw, 180px);
+  line-height: 1;
+  font-weight: 900;
+  margin: 0;
+  background: linear-gradient(135deg, var(--accent), #c93a1f);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 4px 20px rgba(255,77,46,.18);
+  letter-spacing: -2px;
+}
+
 .lobby-wrap {
   flex: 1;
   display: grid; grid-template-columns: 1.3fr 1fr;
   gap: 60px;
-  padding: 60px;
+  padding: 30px 60px 60px;
   max-width: 1400px; margin: 0 auto; width: 100%;
   align-items: center;
 }
 .lobby-headline {
   font-family: var(--font-display);
-  font-size: clamp(48px, 6vw, 80px);
+  font-size: clamp(36px, 4.5vw, 56px);
   line-height: 1; font-weight: 700;
   margin: 0 0 30px;
 }
@@ -645,7 +696,7 @@ em {
 }
 
 /* ============================================================
- * شاشة الجوال (الحكم + اللاعب)
+ * شاشة التلفون (الحكم + اللاعب)
  * ============================================================ */
 .page-judge, .page-player {
   min-height: 100vh;
@@ -1110,7 +1161,7 @@ em {
   text-align: center;
 }
 
-/* ---- شاشة التصويت (الفريق على الجوال) ---- */
+/* ---- شاشة التصويت (الفريق على التلفون) ---- */
 .picker-tile--voted {
   background: var(--success-soft) !important;
   border-color: var(--success);
@@ -1158,11 +1209,13 @@ em {
 .diff-tile--p600 { background: linear-gradient(135deg, #F5A524, #E0901B); color: white; }
 .diff-tile--p800 { background: linear-gradient(135deg, #FF4D2E, #E03D1E); color: white; }
 .diff-tile--p1000 { background: linear-gradient(135deg, #8B2BE5, #6B1EBE); color: white; }
+.diff-tile--p1200 { background: linear-gradient(135deg, #1A1A2E, #000); color: white; }
 .diff-tile--p200 .diff-tile__lbl,
 .diff-tile--p400 .diff-tile__lbl,
 .diff-tile--p600 .diff-tile__lbl,
 .diff-tile--p800 .diff-tile__lbl,
-.diff-tile--p1000 .diff-tile__lbl { opacity: .85; }
+.diff-tile--p1000 .diff-tile__lbl,
+.diff-tile--p1200 .diff-tile__lbl { opacity: .85; }
 .diff-tile--used {
   background: var(--paper-2) !important;
   color: var(--ink-soft) !important;
