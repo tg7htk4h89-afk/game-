@@ -501,6 +501,16 @@
       await Transport.write(code, state);
     });
 
+    /* ---- زر إنهاء اللعبة (في شاشة اللوحة) ---- */
+    $("#endGameBtn")?.addEventListener("click", async () => {
+      const confirm1 = confirm("هل أنت متأكد إنك تبي تنهي اللعبة الحالية؟");
+      if (!confirm1) return;
+      const cur = await Transport.read(code);
+      if (!cur) return;
+      cur.status = "final";
+      await Transport.write(code, cur);
+    });
+
     /* ---- شاشة التصويت على الفئات ---- */
     function renderVoting() {
       const team1Done = (state.team1Votes || []).length >= (CFG.categoriesPerTeam || 3);
@@ -569,6 +579,10 @@
 
     /* ---- لوحة الفئات ---- */
     function renderBoard() {
+      // عرض رمز اللعبة في الشريط العلوي
+      const codeEl = $("#boardGameCode");
+      if (codeEl) codeEl.textContent = code.split("").join(" ");
+
       // تحديث النتائج
       $("#hostTeam1Name").textContent = state.teams.team1.name;
       $("#hostTeam2Name").textContent = state.teams.team2.name;
@@ -703,10 +717,22 @@
     let code = "";
     let connected = false;
 
-    // قراءة الرمز من URL
+    // قراءة الرمز من URL أو من localStorage (للرجوع التلقائي)
     const urlCode = new URLSearchParams(location.search).get("code");
+    const savedCode = localStorage.getItem("mamahanaa::judge::lastCode");
+
     if (urlCode) {
       $("#judgeCodeInput").value = urlCode.toUpperCase();
+    } else if (savedCode && savedCode.length === 6) {
+      $("#judgeCodeInput").value = savedCode;
+      // اعرض رسالة "تبي ترجع للعبة الفائتة؟"
+      const hint = $("#judgeHint");
+      if (hint) {
+        hint.innerHTML = `<button type="button" class="restore-btn" id="judgeRestoreBtn">↻ متابعة لعبة <strong>${savedCode}</strong></button>`;
+        $("#judgeRestoreBtn")?.addEventListener("click", () => {
+          $("#judgeConnectBtn")?.click();
+        });
+      }
     }
 
     $("#judgeCodeInput")?.addEventListener("input", (e) => {
@@ -743,6 +769,9 @@
       state.judgeConnected = true;
       await Transport.write(code, state);
       connected = true;
+
+      // احفظ الرمز للرجوع التلقائي
+      localStorage.setItem("mamahanaa::judge::lastCode", code);
 
       $("#team1NameInput").value = state.teams.team1.name;
       $("#team2NameInput").value = state.teams.team2.name;
@@ -867,8 +896,37 @@
     const params = new URLSearchParams(location.search);
     const urlCode = params.get("code");
 
+    // تحميل البيانات المحفوظة للرجوع التلقائي
+    const savedCode = localStorage.getItem("mamahanaa::team::lastCode");
+    const savedTeam = localStorage.getItem("mamahanaa::team::lastTeam");
+    const savedName = localStorage.getItem("mamahanaa::team::lastName");
+
     if (urlCode && $("#teamCodeInput")) {
       $("#teamCodeInput").value = urlCode.toUpperCase();
+    } else if (savedCode && savedCode.length === 6 && $("#teamCodeInput")) {
+      $("#teamCodeInput").value = savedCode;
+      // اعرض رسالة "تبي ترجع للعبة الفائتة؟"
+      const hint = $("#teamHint");
+      if (hint) {
+        const teamLabel = savedTeam === "team1" ? "الفريق ١" : (savedTeam === "team2" ? "الفريق ٢" : "");
+        hint.innerHTML = `<button type="button" class="restore-btn" id="teamRestoreBtn">↻ متابعة لعبة <strong>${savedCode}</strong> ${teamLabel ? '— ' + teamLabel : ''}</button>`;
+        $("#teamRestoreBtn")?.addEventListener("click", () => {
+          // املأ الحقول من الذاكرة
+          if (savedTeam) {
+            const btn = $(`[data-team="${savedTeam.replace('team','')}"]`);
+            if (btn && !btn.disabled) {
+              teamKey = savedTeam;
+              $$(".team-choice").forEach(b => b.classList.remove("team-choice--selected"));
+              btn.classList.add("team-choice--selected");
+            }
+          }
+          if (savedName && $("#teamNameInput")) {
+            $("#teamNameInput").value = savedName;
+          }
+          // اضغط زر الاتصال
+          $("#teamConnectBtn")?.click();
+        });
+      }
     }
 
     $("#teamCodeInput")?.addEventListener("input", (e) => {
@@ -1010,6 +1068,12 @@
       state.teams[teamKey].name = teamNameInput;
       state.teams[teamKey].connected = true;
       await Transport.write(code, state);
+
+      // احفظ الرمز وبيانات الفريق للرجوع التلقائي
+      localStorage.setItem("mamahanaa::team::lastCode", code);
+      localStorage.setItem("mamahanaa::team::lastTeam", teamKey);
+      localStorage.setItem("mamahanaa::team::lastName", teamNameInput);
+
       startWatching();
     });
 

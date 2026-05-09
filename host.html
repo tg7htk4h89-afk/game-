@@ -106,6 +106,14 @@
 
 <!-- =========== لوحة الفئات ============ -->
 <section class="screen screen--board hidden" data-screen="board">
+  <div class="board-utility-bar">
+    <span class="board-utility-bar__code">
+      <span class="board-utility-bar__lbl">رمز اللعبة:</span>
+      <span class="board-utility-bar__val" id="boardGameCode">— — — — — —</span>
+    </span>
+    <button class="btn btn--ghost btn--sm btn--danger" id="endGameBtn">⊗ إنهاء اللعبة</button>
+  </div>
+
   <header class="board-top">
     <div class="team-card" id="hostTeam1Card">
       <span class="team-card__lbl" id="hostTeam1Name">الفريق الأحمر</span>
@@ -127,7 +135,7 @@
     <div class="board-grid" id="boardGrid">
       <!-- الفئات والنقاط -->
     </div>
-    <p class="board-hint">اللاعب يختار الفئة والنقاط من تلفونه</p>
+    <p class="board-hint">قائد الفريق يختار الفئة والنقاط من تلفونه</p>
   </div>
 </section>
 
